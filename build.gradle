@@ -1,0 +1,243 @@
+import java.text.SimpleDateFormat
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'io.spring.gradle:dependency-management-plugin:0.6.1.RELEASE'
+    }
+}
+
+plugins {
+    id "org.sonarqube" version "2.2.1"
+}
+
+apply plugin: 'java'
+
+apply plugin: 'maven'
+apply plugin: 'maven-publish'
+apply plugin: 'signing'
+
+apply plugin: 'idea'
+apply plugin: 'checkstyle'
+apply plugin: 'jacoco'
+apply plugin: 'pmd'
+
+group = serviceGroup
+version = serviceVersion
+archivesBaseName = serviceName
+project.ext.buildTime = java.time.Instant.now().toString() // for versioning
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+ext {
+    ossrhUsername = System.getenv("OSSRH_USERNAME")
+    ossrhPassword = System.getenv("OSSRH_PASSWORD")
+}
+ext.set("signing.secretKeyRingFile", ".signing/secring.gpg")
+ext.set("signing.keyId", System.getenv("SIGNING_KEYID"))
+ext.set("signing.password", System.getenv("SIGNING_PASSWORD"))
+
+repositories {
+    mavenCentral()
+    maven { url "https://oss.sonatype.org/content/repositories/snapshots" }
+}
+
+dependencies {
+    // Add service dependency here
+}
+
+def time = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+time.setTimeZone(TimeZone.getTimeZone("GMT"))
+
+def versionToCopy = copySpec {
+    from 'src/main/resources'
+    include 'version_template'
+}
+
+task generateBuildInfo(type:Copy) {
+    with versionToCopy
+    into 'build/resources/main'
+    rename { 'version.properties' }
+    expand([
+            build: "$System.env.BUILD_NUMBER", // ${build}
+            branch: "$System.env.GIT_BRANCH", // ${branch}
+            time: time.format(new Date()) + " GMT" // ${time}
+    ])
+    doLast{
+        delete 'src/main/resources/version_template'
+    }
+}
+
+signing {
+    sign configurations.archives
+}
+
+task javadocJar(type: Jar) {
+    classifier = 'javadoc'
+    from javadoc
+}
+
+task sourcesJar(type: Jar) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+artifacts {
+    archives javadocJar, sourcesJar
+}
+signArchives.onlyIf {project.getProperty("signing.keyId") && project.getProperty("signing.password")}
+
+uploadArchives {
+    repositories {
+        mavenDeployer {
+            beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+            repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+                authentication(userName: ossrhUsername, password: ossrhPassword)
+            }
+
+            snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
+                authentication(userName: ossrhUsername, password: ossrhPassword)
+            }
+
+            pom.project {
+                name projectName
+                packaging 'jar'
+                description projectDescription
+
+                licenses {
+                    license {
+                        name 'GNU Affero General Public License, Version 3'
+                        url 'https://www.gnu.org/licenses/agpl-3.0.txt'
+                    }
+                }
+            }
+        }
+    }
+}
+uploadArchives.onlyIf { project.getProperty("ossrhUsername") && project.getProperty("ossrhPassword") }
+
+processResources {
+    // update version information in build
+    filesMatching('**/version.properties') {
+        expand(project.properties)
+    }
+}
+
+sourceSets {
+    integrationTest {
+        java {
+            compileClasspath += main.output + test.output
+            runtimeClasspath += main.output + test.output
+            srcDir file('src/integration-test/java')
+        }
+        resources.srcDir file('src/integration-test/resources')
+    }
+}
+
+configurations {
+    integrationTestCompile.extendsFrom testCompile
+    integrationTestRuntime.extendsFrom testRuntime
+}
+
+task integrationTest(type: Test) {
+    testClassesDir = sourceSets.integrationTest.output.classesDir
+    classpath = sourceSets.integrationTest.runtimeClasspath
+    testLogging {
+        events "passed", "skipped", "failed"
+    }
+}
+check.dependsOn integrationTest
+integrationTest.mustRunAfter test
+
+tasks.withType(Test) {
+    reports.html.destination = file("${reporting.baseDir}/${name}")
+    reports.junitXml.destination = file("${testResultsDir}/${name}")
+}
+
+test {
+    testLogging {
+        events 'started', 'passed'
+    }
+}
+
+idea {
+    project {
+        vcs = 'Git'
+        ipr.withXml { xmlFile ->
+            // enable 'Annotation Processors', source: https://gist.github.com/stephanos/8645809
+            xmlFile.asNode().component
+                    .find { it.@name == 'CompilerConfiguration' }['annotationProcessing'][0]
+                    .replaceNode {
+                annotationProcessing {
+                    profile(default: true, name: 'Default', useClasspath: 'true', enabled: true)
+                }
+            }
+        }
+        /*    iml.withXml { xmlFile ->
+                xmlFile.asNode().component.find { it.@name == 'NewModuleRootManager'}['Content'][0]
+                    .addNode {
+                    sourceFolder {
+                        profile(url: "file://$MODULE_DIR\$/src/integration-test/java", isTestSource:
+                                true)
+                    }
+                }
+            }*/
+    }
+}
+
+jacocoTestReport {
+    group = "reporting"
+    description = "Generate Jacoco coverage reports after running tests."
+    reports {
+        xml.enabled false
+        html.enabled true
+        csv.enabled false
+    }
+
+    additionalSourceDirs = files(sourceSets.main.allJava.srcDirs)
+}
+
+checkstyle {
+    toolVersion = "6.19"
+}
+
+//Usage: gradle sonarqube
+sonarqube {
+    properties {
+        property "sonar.projectName", "OpenLMIS Template Module"
+        property "sonar.projectKey", "org.sonarqube:$rootProject.name"
+        property "sonar.projectVersion", version
+        property "sonar.host.url", "http://sonar.openlmis.org"
+        property "sonar.java.coveragePlugin", "jacoco"
+        //Tells SonarQube where the unit tests execution reports are
+        property "sonar.junit.reportsPath", "build/test-results/test"
+        //Tells SonarQube where the unit tests code coverage report is
+        property "sonar.jacoco.reportPath", "build/jacoco/test.exec"
+        //Tells SonarQube where the integration tests code coverage report is
+        property "sonar.jacoco.itReportPath", "build/jacoco/integrationTest.exec"
+    }
+}
+
+pmd {
+    toolVersion = '5.4.0'
+    consoleOutput= true
+    ignoreFailures = false
+    ruleSetFiles = files("config/pmd/ruleset.xml")
+    reportsDir = file("build/reports/pmd")
+}
+
+tasks.withType(Pmd){
+    reports {
+        xml.enabled true
+        html.enabled true
+    }
+}
+
+assemble {
+    dependsOn jacocoTestReport
+    dependsOn check
+    finalizedBy uploadArchives
+}
