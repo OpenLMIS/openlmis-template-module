@@ -9,15 +9,15 @@ OpenLMIS 3.x Extension Module.
 ## Starting a new module
 1. Fork/clone this repository from GitHub.
 
-```shell
-git clone https://github.com/OpenLMIS/openlmis-template-module.git <openlmis-your-module-name>
+ ```shell
+ git clone https://github.com/OpenLMIS/openlmis-template-module.git <openlmis-your-module-name>
  ```
 2. Respectively change all instances of `openlmis-template-module` and `template-module` within the project 
 to `openlmis-your-module-name` and `your-module-name`.
 3. Change project name and description in `gradle.properties`
 4. Declare the service to be extended as a dependency using maven, e.g.:
 
-```
+ ```
 dependencies {
     compile "org.openlmis:openlmis-requisition:3.0.0-SNAPSHOT"
 }
