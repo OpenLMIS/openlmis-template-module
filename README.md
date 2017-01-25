@@ -22,13 +22,25 @@ dependencies {
     compile "org.openlmis:openlmis-requisition:3.0.0-SNAPSHOT"
 }
  ```
-5. Add Java code to the template.
-6. Develop w/ Docker by running `docker-compose run --service-ports <your-module-name>`. 
-7. You should now be in an interactive shell inside the newly created development environment. 
-You can assemble the outputs of project and create jar file by running `gradle assemble`
-8. Copy the generated jar file to the extension volume of extended service 
-and modify `extensions.properties` to use your defined extension. 
+5. Develop w/ Docker by running `docker-compose run --service-ports <your-module-name>`. 
+6. You should now be in an interactive shell inside the newly created development environment. 
+7. Add java code to the template. See [Adding extension points](#addingextensions).
+8. Assemble the outputs of project and create jar file by running `gradle assemble`
+9. Copy the generated jar to the `extensions` volume of extended service and add your module as a dependency.
 [Read more](https://github.com/OpenLMIS/openlmis-example-extensions#adding-extension-points)
+
+### <a name="addingextensions">Adding extension points</a>
+1. Annotate your implementation of the extension point with @Component and put its name in the value.
+```
+@Component("CustomExtendableComponent")
+public class CustomExtendableComponent implements ExtendableComponent {
+...
+```
+2. Update `extensions.properties` in the `extensions` volume of corresponding service with your components's id, e.g.:
+```
+# Extension configuration of some service
+ExtendableComponent=CustomExtendableComponent
+```
 
 ### Publishing the module to maven
 1. The module needs to be signed with GnuPG key before publishing. Follow the instructions 
