@@ -31,16 +31,18 @@ dependencies {
 
 ### <a name="addingextensions">Adding extension points</a>
 1. Annotate your implementation of the extension point with @Component and put its name in the value.
-```
+
+ ```
 @Component("CustomExtendableComponent")
 public class CustomExtendableComponent implements ExtendableComponent {
 ...
-```
+ ```
 2. Update `extensions.properties` in the `extensions` volume of corresponding service with your components's id, e.g.:
-```
+
+ ```
 # Extension configuration of some service
 ExtendableComponent=CustomExtendableComponent
-```
+ ```
 
 ### Publishing the module to maven
 1. The module needs to be signed with GnuPG key before publishing. Follow the instructions 
@@ -51,6 +53,7 @@ ExtendableComponent=CustomExtendableComponent
 You can modify the repository urls inside `uploadArchives` gradle task.
 5. Put your repository id and password in the `.env` file.
 6. Run the builder. It should assemble the outputs, sign archives and publish your artifacts.
-```shell
+
+ ```shell
 > docker-compose -f docker-compose.builder.yml run builder
-```
+ ```
